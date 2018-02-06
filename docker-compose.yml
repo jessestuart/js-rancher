@@ -1,0 +1,74 @@
+---
+version: '3.4'
+
+services:
+  # =====================
+  # Main Rancher service.
+  # =====================
+  rancher:
+    image: rancher/server:stable
+    container_name: rancher-server
+    restart: unless-stopped
+    depends_on:
+      - nginx-proxy
+      - letsencrypt-nginx-proxy
+    ports:
+      - '8080:8080'
+    expose:
+      - 8080
+    networks:
+      - default
+    environment:
+      - VIRTUAL_PORT=8080
+      # User-defined environment variables -- modify these in the `.env` file.
+      - VIRTUAL_HOST
+      - LETSENCRYPT_HOST
+      - LETSENCRYPT_EMAIL
+
+  # =====================
+  # Standard Nginx proxy.
+  # =====================
+  nginx-proxy:
+    image: jwilder/nginx-proxy
+    container_name: nginx-proxy
+    labels:
+      # This is required by the `letsencrypt-nginx-proxy` image.
+      - com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy=true
+    ports:
+      - '80:80'
+      - '443:443'
+    networks:
+      - default
+    volumes:
+      # Mount volumes on the host to make debugging easier, if need be.
+      # These can be replaced with standard named volumes if desired --
+      # just make sure the volumes for the `letsencrypt` image match.
+      - '/etc/nginx/vhost.d:/etc/nginx/vhost.d'
+      - '/usr/share/nginx/html:/usr/share/nginx/html'
+      - '/etc/nginx/conf.d:/etc/nginx/conf.d'
+      - '/etc/nginx/certs:/etc/nginx/certs:ro'
+      - '/var/run/docker.sock:/tmp/docker.sock:ro'
+
+  # ===============================================================
+  # Companion to the `nginx-proxy` that registers the SSL/TLS cert.
+  # ===============================================================
+  letsencrypt-nginx-proxy:
+    container_name: letsencrypt-nginx-proxy
+    image: 'jrcs/letsencrypt-nginx-proxy-companion'
+    depends_on:
+      # The `nginx-proxy` container must be up first, or this container will
+      # throw errors.
+      - nginx-proxy
+    networks:
+      - default
+    volumes:
+      - '/etc/nginx/certs:/etc/nginx/certs'
+      - '/etc/nginx/conf.d:/etc/nginx/conf.d'
+      - '/etc/nginx/vhost.d:/etc/nginx/vhost.d'
+      - '/usr/share/nginx/html:/usr/share/nginx/html'
+      - '/var/run/docker.sock:/var/run/docker.sock:ro'
+
+networks:
+  default:
+    external:
+      name: nginx-net
